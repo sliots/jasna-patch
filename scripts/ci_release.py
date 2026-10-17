@@ -48,6 +48,11 @@ def main():
     if shutil.disk_usage(root).free < 38_000_000_000:
         raise RuntimeError('At least 38 GB free disk space is required')
     repo = os.environ['PATCH_REPOSITORY']
+    releases = gh_json(f'repos/{repo}/releases')
+    matches = [r for r in releases if r['tag_name'] == TAG]
+    if len(matches) != 1 or not matches[0]['draft'] or matches[0]['assets']:
+        raise RuntimeError('Exactly one empty release draft is required; refusing to overwrite assets or a published release')
+    release = matches[0]
     pwsh = shutil.which('pwsh')
     if not pwsh:
         raise RuntimeError('PowerShell is required for actual patch validation')
@@ -116,7 +121,7 @@ def main():
         'validation_platform': 'Linux x64; Windows application/GPU not launched',
         'actions_run_url': f"https://github.com/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"})
     checksum_files(out)
-    release = gh_json(f'repos/{repo}/releases/tags/{TAG}')
+    release = gh_json(f'repos/{repo}/releases/{release["id"]}')
     if not release['draft']:
         raise RuntimeError('Refusing to overwrite an already published release')
     if release['assets']:
