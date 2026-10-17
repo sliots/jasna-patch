@@ -53,6 +53,7 @@ def main():
     if len(matches) != 1 or not matches[0]['draft'] or matches[0]['assets']:
         raise RuntimeError('Exactly one empty release draft is required; refusing to overwrite assets or a published release')
     release = matches[0]
+    draft_release_id = release['id']
     pwsh = shutil.which('pwsh')
     if not pwsh:
         raise RuntimeError('PowerShell is required for actual patch validation')
@@ -64,12 +65,12 @@ def main():
     seven = tools / '7zz'
     sources = []
     for version, target in [('0.11.1', 'old'), ('0.11.2', 'new')]:
-        release = gh_json(f'repos/Kruk2/jasna/releases/tags/v{version}')
-        assets = sorted((a for a in release['assets']
+        upstream = gh_json(f'repos/Kruk2/jasna/releases/tags/v{version}')
+        assets = sorted((a for a in upstream['assets']
                          if a['name'].startswith(f'jasna-windows-{version}.7z.')), key=lambda a: a['name'])
         if [a['name'].rsplit('.', 1)[-1] for a in assets] != ['001', '002', '003', '004']:
             raise RuntimeError('Unexpected upstream Windows volume list')
-        sources.append({'tag': release['tag_name'], 'url': release['html_url'],
+        sources.append({'tag': upstream['tag_name'], 'url': upstream['html_url'],
                         'assets': [{k: a[k] for k in ['name', 'size', 'digest', 'browser_download_url']}
                                    for a in assets]})
         downloads = root / f'download-{target}'; downloads.mkdir()
@@ -121,7 +122,7 @@ def main():
         'validation_platform': 'Linux x64; Windows application/GPU not launched',
         'actions_run_url': f"https://github.com/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"})
     checksum_files(out)
-    release = gh_json(f'repos/{repo}/releases/{release["id"]}')
+    release = gh_json(f'repos/{repo}/releases/{draft_release_id}')
     if not release['draft']:
         raise RuntimeError('Refusing to overwrite an already published release')
     if release['assets']:

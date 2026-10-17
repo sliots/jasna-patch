@@ -27,3 +27,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PATCH_REPOSITORY: ${{ github.repository }}
         run: python3 scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch"
+      - name: Preserve build outputs if publication fails
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: patch-build-output
+          path: ${{ runner.temp }}/jasna-patch/artifacts
+          if-no-files-found: ignore
+          retention-days: 1
