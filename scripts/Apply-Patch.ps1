@@ -28,9 +28,17 @@ function Verify-Manifest($manifest, [string]$base) {
         if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value.sha256) { throw "SHA256 mismatch: $($entry.Name)" }
     }
 }
-if (-not (Test-Path -LiteralPath (Join-Path $root 'jasna.exe') -PathType Leaf)) { throw 'InstallDir must directly contain jasna.exe.' }
-if (Get-Process -Name 'jasna' -ErrorAction SilentlyContinue) { throw 'Close Jasna before applying the patch.' }
-Write-Host 'Verifying the complete v0.11.1 installation...'
+# Patches without this field were produced by the original Jasna-only builder.
+$markerProperty = $diff.PSObject.Properties['entry_file']
+$entryFile = if ($null -ne $markerProperty) { [string]$markerProperty.Value } else { 'jasna.exe' }
+if ($entryFile) {
+    if (-not (Test-Path -LiteralPath (Safe-Path $root $entryFile) -PathType Leaf)) { throw "Installation root must contain $entryFile" }
+    if ([IO.Path]::GetExtension($entryFile) -ieq '.exe') {
+        $processName = [IO.Path]::GetFileNameWithoutExtension($entryFile)
+        if (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq $processName }) { throw "Close $processName before applying the patch." }
+    }
+}
+Write-Host "Verifying baseline files ($($diff.from))..."
 Verify-Manifest $old $root
 $payloadRoot = Join-Path $patch 'payload'
 foreach ($relative in @($diff.added) + @($diff.modified)) {
@@ -53,9 +61,9 @@ foreach ($relative in @($diff.added) + @($diff.modified)) {
     if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
     Copy-Item -LiteralPath $source -Destination $dest -Force
 }
-Write-Host 'Verifying the complete v0.11.2 installation...'
+Write-Host "Verifying target files ($($diff.to))..."
 Verify-Manifest $new $root
 foreach ($relative in @($diff.deleted)) {
     if ($null -eq $new.PSObject.Properties[$relative] -and (Test-Path -LiteralPath (Safe-Path $root $relative) -PathType Leaf)) { throw "Obsolete file remains: $relative" }
 }
-Write-Host 'Success: Jasna updated from v0.11.1 to v0.11.2.'
+Write-Host "Success: updated from $($diff.from) to $($diff.to)."

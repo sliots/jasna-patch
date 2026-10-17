@@ -2,6 +2,38 @@ name: Build and publish Windows patch
 on:
   workflow_dispatch:
     inputs:
+      source_repository:
+        description: Upstream owner/repository
+        type: string
+        required: true
+        default: Kruk2/jasna
+      old_tag:
+        description: Installed baseline release tag
+        type: string
+        required: true
+        default: v0.11.1
+      new_tag:
+        description: Target release tag
+        type: string
+        required: true
+        default: v0.11.2
+      asset_pattern:
+        description: 'One archive family; placeholders {tag} or {version} (without leading v)'
+        type: string
+        required: true
+        default: 'jasna-windows-{version}.7z*'
+      release_tag:
+        description: Optional patch tag; default NEW_TAG-OLD_TAG.patch
+        type: string
+        default: ''
+      entry_file:
+        description: Relative common entry file for both application roots; blank disables root unwrapping
+        type: string
+        default: jasna.exe
+      volume_size_mb:
+        description: Volume limit in decimal MB (1..2000)
+        type: string
+        default: '1000'
       mode:
         description: Publish (skip an already complete release) or validate without publishing
         type: choice
@@ -24,7 +56,7 @@ permissions:
   contents: write
   actions: read
 concurrency:
-  group: jasna-windows-patch-release
+  group: patch-${{ inputs.release_tag || format('{0}-{1}.patch', inputs.new_tag, inputs.old_tag) }}
   cancel-in-progress: false
 jobs:
   publish:
@@ -33,6 +65,13 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PATCH_REPOSITORY: ${{ github.repository }}
+      PATCH_SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+      PATCH_OLD_TAG: ${{ inputs.old_tag }}
+      PATCH_NEW_TAG: ${{ inputs.new_tag }}
+      PATCH_ASSET_PATTERN: ${{ inputs.asset_pattern }}
+      PATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+      PATCH_ENTRY_FILE: ${{ inputs.entry_file }}
+      PATCH_VOLUME_SIZE_MB: ${{ inputs.volume_size_mb }}
       PATCH_MODE: ${{ inputs.mode }}
       PATCH_COMPRESSION_LEVEL: ${{ inputs.compression_level }}
       PATCH_RECOVERY_RUN: ${{ inputs.recovery_run_id }}
@@ -48,21 +87,23 @@ jobs:
       - name: Prepare disk space
         if: steps.plan.outputs.action == 'build'
         shell: bash
+        env:
+          PATCH_REQUIRED_BYTES: ${{ steps.plan.outputs.disk_bytes }}
         run: |
           set -euo pipefail
           # Remove only preinstalled SDKs on this disposable GitHub-hosted runner.
-          if [ "$(df --output=avail -B1 "$RUNNER_TEMP" | tail -1)" -lt 38000000000 ]; then
+          if [ "$(df --output=avail -B1 "$RUNNER_TEMP" | tail -1)" -lt "$PATCH_REQUIRED_BYTES" ]; then
             sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/share/swift /opt/ghc
           fi
           df -h "$RUNNER_TEMP"
-          test "$(df --output=avail -B1 "$RUNNER_TEMP" | tail -1)" -ge 38000000000
+          test "$(df --output=avail -B1 "$RUNNER_TEMP" | tail -1)" -ge "$PATCH_REQUIRED_BYTES"
       - name: Install checksum-verified 7-Zip
         if: steps.plan.outputs.action == 'build'
         run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase tools
-      - name: Download, verify and extract v0.11.1
+      - name: Download, verify and extract baseline release
         if: steps.plan.outputs.action == 'build'
         run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase extract-old
-      - name: Download, verify and extract v0.11.2
+      - name: Download, verify and extract target release
         if: steps.plan.outputs.action == 'build'
         run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase extract-new
       - name: Compare file contents and stage patch

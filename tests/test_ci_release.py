@@ -13,6 +13,21 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
 import ci_release as ci
 
 
+def source_records(cfg=ci.DEFAULT_CONFIG, counts=(4, 4)):
+    result = []
+    for (tag, _), count in zip(cfg.versions, counts):
+        pattern = cfg.pattern(tag)
+        names = [pattern[:-1] + f'.{i:03d}' for i in range(1, count + 1)] if pattern.endswith('*') else [pattern]
+        result.append({'repository': cfg.source_repository, 'tag': tag, 'url': cfg.url(tag),
+                       'assets': [{'name': name, 'size': 1, 'digest': 'sha256:' + 'a' * 64,
+                                   'browser_download_url': 'https://example.invalid/' + name} for name in names]})
+    return result
+
+
+def config_env(cfg):
+    return {'PATCH_' + name.upper(): str(value) for name, value in cfg.to_dict().items()}
+
+
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -22,13 +37,13 @@ class ReleaseTests(unittest.TestCase):
         self.out.mkdir()
         self.repo = 'acme/patch'
         self.ctx = {'repo': self.repo, 'tag': ci.TAG, 'release_id': 100, 'mode': 'publish'}
-        self.env = mock.patch.dict(os.environ, {'PATCH_REPOSITORY': self.repo, 'GITHUB_OUTPUT': ''})
+        self.env = mock.patch.dict(os.environ, {'PATCH_REPOSITORY': self.repo, 'GITHUB_OUTPUT': '', **config_env(ci.DEFAULT_CONFIG)})
         self.env.start()
         self.addCleanup(self.env.stop)
         ci.write(self.out / 'diff.json', {
             'from': 'v0.11.1', 'to': 'v0.11.2', 'added': ['a'], 'modified': ['b'], 'deleted': ['c'],
         })
-        ci.write(self.out / 'source-assets.json', [])
+        ci.write(self.out / 'source-assets.json', source_records())
         ci.write(self.out / 'verification.json', {
             **{k: True for k in ci.VERIFIED_FLAGS}, 'actual_powershell_apply_exit_code': 0,
             'source_archive_parts_sha256_verified': 8, 'target_files': 3,
@@ -52,7 +67,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(ctx['action'], 'done')
         api.assert_called_once_with('repos/acme/patch/releases?per_page=100&page=1')
         self.assertEqual({call.args[1]['name'] for call in fetch.call_args_list},
-                         {'SHA256SUMS.txt', 'verification.json', 'diff.json'})
+                         {'SHA256SUMS.txt', 'verification.json', 'diff.json', 'source-assets.json'})
 
     def test_upstream_ids_cannot_replace_target_id(self):
         target = self.release(names=[])
@@ -186,7 +201,7 @@ class FunctionalPatchTests(unittest.TestCase):
                 (tree / 'unchanged.bin').write_bytes(b'\x00unchanged\xff')
             (root / 'old' / 'deleted.txt').write_text('obsolete')
             (root / 'new' / 'added.txt').write_text('added')
-            ctx = {'repo': 'fixture/patch', 'sources': []}
+            ctx = {'repo': 'fixture/patch', 'sources': source_records()}
             ci.build(root, ctx)
             (root / 'tools').mkdir()
             (root / 'tools' / '7zz').symlink_to(shutil.which('7zz') or shutil.which('7z'))
