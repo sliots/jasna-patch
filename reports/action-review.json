@@ -1,0 +1,51 @@
+{
+  "reviewed_run": "https://github.com/sliots/jasna-patch/actions/runs/39059221334",
+  "baseline": {
+    "conclusion": "success",
+    "job_seconds": 653,
+    "main_step_seconds": 645,
+    "warnings": [
+      "checkout Node 20 deprecation; runtime forced to Node 24"
+    ],
+    "stages_approx_seconds": {
+      "tool_setup": 4,
+      "downloads_and_extraction": 241,
+      "file_comparison": 70,
+      "compression": 127,
+      "archive_and_actual_updater_validation": 161,
+      "independent_target_hash_comparison": 36,
+      "upload_and_publication": 8
+    }
+  },
+  "historical_failure": "Target draft ID overwritten with the upstream release ID, producing a 403 on the wrong target endpoint; fixed before the successful run.",
+  "compression_benchmark": {
+    "environment": "current cloud Linux x64 instance; sequential runs on identical staged input",
+    "input_bytes": 625828619,
+    "runs": [
+      {
+        "level": 5,
+        "dictionary": "64m",
+        "seconds": 169.43,
+        "bytes": 150310272
+      },
+      {
+        "level": 3,
+        "dictionary": "16m",
+        "seconds": 35.95,
+        "bytes": 164177332
+      }
+    ],
+    "both_archives_crc_verified": true,
+    "note": "Local single-run measurements, not a guarantee of GitHub runner performance."
+  },
+  "changes": [
+    "Pinned checkout v6 and upload-artifact v6 (Node 24)",
+    "Separate workflow steps with phase duration summaries",
+    "Verify completed releases and skip without rebuilding",
+    "Recover checksum-verified bundles and resume matching partial uploads",
+    "Keep verified outputs for 3 days",
+    "Fast compression default with smaller-archive option",
+    "Keep actual PowerShell application and independent full target hash verification"
+  ],
+  "published_release_unchanged": true
+}

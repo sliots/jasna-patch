@@ -1,18 +1,52 @@
 name: Build and publish Windows patch
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Publish (skip an already complete release) or validate without publishing
+        type: choice
+        options:
+          - publish
+          - validate
+        default: publish
+      compression_level:
+        description: Fast (3) or smaller archive (5)
+        type: choice
+        options:
+          - '3'
+          - '5'
+        default: '3'
+      recovery_run_id:
+        description: Optional completed run ID with a verified patch-build-output artifact
+        type: string
+        default: ''
 permissions:
   contents: write
+  actions: read
 concurrency:
   group: jasna-windows-patch-release
   cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PATCH_REPOSITORY: ${{ github.repository }}
+      PATCH_MODE: ${{ inputs.mode }}
+      PATCH_COMPRESSION_LEVEL: ${{ inputs.compression_level }}
+      PATCH_RECOVERY_RUN: ${{ inputs.recovery_run_id }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, Node 24
+        with:
+          persist-credentials: false
+      - name: Test release safeguards
+        run: python3 -m unittest discover -s tests -v
+      - name: Inspect target release and plan work
+        id: plan
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase preflight
       - name: Prepare disk space
+        if: steps.plan.outputs.action == 'build'
         shell: bash
         run: |
           set -euo pipefail
@@ -22,16 +56,35 @@ jobs:
           fi
           df -h "$RUNNER_TEMP"
           test "$(df --output=avail -B1 "$RUNNER_TEMP" | tail -1)" -ge 38000000000
-      - name: Generate, verify, upload and publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PATCH_REPOSITORY: ${{ github.repository }}
-        run: python3 scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch"
-      - name: Preserve build outputs if publication fails
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Install checksum-verified 7-Zip
+        if: steps.plan.outputs.action == 'build'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase tools
+      - name: Download, verify and extract v0.11.1
+        if: steps.plan.outputs.action == 'build'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase extract-old
+      - name: Download, verify and extract v0.11.2
+        if: steps.plan.outputs.action == 'build'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase extract-new
+      - name: Compare file contents and stage patch
+        if: steps.plan.outputs.action == 'build'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase build
+      - name: Compress patch and split if needed
+        if: steps.plan.outputs.action == 'build'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase pack
+      - name: Apply final archive and verify exact target contents
+        if: steps.plan.outputs.action == 'build'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase validate
+      - name: Restore and verify a previous validated bundle
+        if: steps.plan.outputs.action == 'recover'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase recover
+      - name: Upload missing assets, verify and publish
+        if: steps.plan.outputs.action != 'done' && inputs.mode == 'publish'
+        run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase publish
+      - name: Preserve outputs for recovery or inspection
+        if: always() && steps.plan.outputs.action != 'done'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, Node 24
         with:
           name: patch-build-output
           path: ${{ runner.temp }}/jasna-patch/artifacts
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 3
