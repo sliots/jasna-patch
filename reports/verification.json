@@ -1,0 +1,20 @@
+{
+  "validated_at_utc": "2026-10-17T18:06:30.349912+00:00",
+  "source_archive_parts_sha256_verified": 8,
+  "source_archives_extraction_crc_verified": true,
+  "patch_archive_extraction_crc_verified": true,
+  "actual_powershell_apply_exit_code": 0,
+  "powershell_version": "7.6.7",
+  "validation_platform": "Linux x64; Windows application/GPU not launched",
+  "target_files": 19453,
+  "target_bytes": 13114864781,
+  "updated_file_set_and_sha256_exactly_match_target": true,
+  "fixture_added_modified_deleted_unchanged": true,
+  "fixture_corrupted_baseline_rejected_without_mutation": true,
+  "patch_assets": [
+    {
+      "name": "v0.11.2-v0.11.1.patch.7z",
+      "size": 150310272
+    }
+  ]
+}
