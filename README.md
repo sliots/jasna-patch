@@ -37,3 +37,11 @@
 `diff.json` 记录新增、修改、删除文件及差异文件总大小；`old-manifest.json`、`new-manifest.json` 记录两个版本的全量文件校验信息。变化文件以新版本完整内容保存，不使用二进制 delta；压缩比取决于实际变化。
 
 上游文件及其组件保留各自许可证和声明，参见上游对应版本的 `LICENSING.md`、`RELEASE_SOURCES.md` 及发行包内许可证文件。
+
+## GitHub Actions 自动发布
+
+工作流 **Build and publish Windows patch** 可在仓库的 Actions 页面手动运行。它使用 GitHub 内置 `GITHUB_TOKEN`（`contents: write`），不需要额外 PAT 或云环境 Secret。
+
+当前工作流固定处理 v0.11.1 → v0.11.2，要求目标 Release 存在且为没有附件的草稿。它会校验上游八个 Windows 分卷、生成差异包，从最终压缩包实际执行 PowerShell 更新，并检查完整文件集合及 SHA-256 与新版一致。上传后还会校验远端全部附件的大小和 SHA-256，确认无误后才正式发布。它拒绝覆盖已有附件或已发布的 Release。
+
+工作流使用 Ubuntu runner，检查至少 38 GB 可用空间，必要时仅清理该临时 runner 上预装的 Android、.NET、Swift 和 GHC SDK。验证覆盖文件更新，不包含 Windows 应用启动或 GPU 功能测试。
