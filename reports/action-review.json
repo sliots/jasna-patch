@@ -47,5 +47,17 @@
     "Fast compression default with smaller-archive option",
     "Keep actual PowerShell application and independent full target hash verification"
   ],
-  "published_release_unchanged": true
+  "published_release_unchanged": true,
+  "optimized_validation": {
+    "run": "https://github.com/sliots/jasna-patch/actions/runs/39064121639",
+    "conclusion": "success",
+    "job_seconds": 8,
+    "preflight_seconds": 1.3,
+    "tests_passed": 14,
+    "tests_skipped": 0,
+    "annotations": 0,
+    "published_assets_sha256_unchanged": true,
+    "scope": "Real small-archive/PowerShell integration and release safeguards, followed by real published-release digest verification. Full source rebuild and publication intentionally skipped for the existing complete release.",
+    "actionlint": "passed locally"
+  }
 }
