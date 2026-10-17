@@ -1,0 +1,32 @@
+{
+  "run": "https://github.com/sliots/jasna-patch/actions/runs/39066507416",
+  "conclusion": "success",
+  "job_seconds": 15,
+  "tests_passed": 27,
+  "tests_skipped": 0,
+  "annotations": 0,
+  "configurable_inputs": [
+    "source_repository",
+    "old_tag",
+    "new_tag",
+    "asset_pattern",
+    "release_tag",
+    "entry_file",
+    "volume_size_mb",
+    "mode",
+    "compression_level",
+    "recovery_run_id"
+  ],
+  "functional_scenarios": [
+    "Legacy Jasna bundle compatibility and published-release skip",
+    "Other repository and version labels with nested executable path",
+    "Different ZIP wrapper directory names, actual CLI build/pack/validate phases",
+    "Real three-volume and five-volume source archives with SHA256 and CRC verification",
+    "Real 1 MB patch splitting, extraction and PowerShell application",
+    "Data-only patch without an executable marker",
+    "Corrupt baseline and mismatched recovery parameters rejected"
+  ],
+  "scope": "Small real archive/update fixtures and a read-only compatibility check of the existing published Release; no new full upstream build was published.",
+  "existing_release_patch_sha256": "9fdd92bac7aaae025719fc5b8886d58cfd0e8e6199e2dc18aa6d1e2f2f705f64",
+  "existing_release_unchanged": true
+}
