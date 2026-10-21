@@ -1,0 +1,12 @@
+{
+  "validated_at_utc": "2026-10-17T18:52:26.812571+00:00",
+  "source_archive_parts_sha256_verified": 8,
+  "source_archives_extraction_crc_verified": true,
+  "patch_archive_extraction_crc_verified": true,
+  "actual_powershell_apply_exit_code": 0,
+  "updated_file_set_and_sha256_exactly_match_target": true,
+  "target_files": 19453,
+  "target_bytes": 13114864781,
+  "validation_platform": "Linux x64; Windows application/GPU not launched",
+  "actions_run_url": "https://github.com/sliots/jasna-patch/actions/runs/39059221334"
+}
