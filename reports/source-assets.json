@@ -1,0 +1,64 @@
+[
+  {
+    "repository": "Kruk2/jasna",
+    "tag": "v0.11.2",
+    "url": "https://github.com/Kruk2/jasna/releases/tag/v0.11.2",
+    "assets": [
+      {
+        "name": "jasna-windows-0.11.2.7z.001",
+        "size": 2097152000,
+        "digest": "sha256:41aa61d49e519704f50fc64558bde8488bfe927d768dabe8a43a498f01c1ac08",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.2/jasna-windows-0.11.2.7z.001"
+      },
+      {
+        "name": "jasna-windows-0.11.2.7z.002",
+        "size": 2097152000,
+        "digest": "sha256:7847a6d17e1d29fb378a99571416e38ce762fe71429ada07c2e3bb744820b817",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.2/jasna-windows-0.11.2.7z.002"
+      },
+      {
+        "name": "jasna-windows-0.11.2.7z.003",
+        "size": 2097152000,
+        "digest": "sha256:935ecdd0a8eb6806e2fe4f915a3218f0ebe96c9b5b6bdff82b4b985be6fd19ea",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.2/jasna-windows-0.11.2.7z.003"
+      },
+      {
+        "name": "jasna-windows-0.11.2.7z.004",
+        "size": 693202321,
+        "digest": "sha256:4dd09add14269f2e7bad55a60379dbfb9e1082d202925e19e81ce60848152b05",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.2/jasna-windows-0.11.2.7z.004"
+      }
+    ]
+  },
+  {
+    "repository": "Kruk2/jasna",
+    "tag": "v0.11.3",
+    "url": "https://github.com/Kruk2/jasna/releases/tag/v0.11.3",
+    "assets": [
+      {
+        "name": "jasna-windows-0.11.3.7z.001",
+        "size": 2097152000,
+        "digest": "sha256:c5a0f465c0273f7f7607eaf4ae005cd9539599704173b1c0218e3f9031a9dd63",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.3/jasna-windows-0.11.3.7z.001"
+      },
+      {
+        "name": "jasna-windows-0.11.3.7z.002",
+        "size": 2097152000,
+        "digest": "sha256:cb541c2a67469b4b0355d9d5b8d808e745bb2c6ed7874fb2415331f2d1d820db",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.3/jasna-windows-0.11.3.7z.002"
+      },
+      {
+        "name": "jasna-windows-0.11.3.7z.003",
+        "size": 2097152000,
+        "digest": "sha256:13f7713414ee5fee95ea569793d55393e23c71ce1c9707267ea869577b77211a",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.3/jasna-windows-0.11.3.7z.003"
+      },
+      {
+        "name": "jasna-windows-0.11.3.7z.004",
+        "size": 693537928,
+        "digest": "sha256:cd6545ea3126e7271b8f7079fefc4c0f26777ef8271c73742533616378914b13",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.11.3/jasna-windows-0.11.3.7z.004"
+      }
+    ]
+  }
+]

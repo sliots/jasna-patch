@@ -1,0 +1,26 @@
+{
+  "format_version": 2,
+  "from": "v0.11.2",
+  "to": "v0.11.3",
+  "source_repository": "Kruk2/jasna",
+  "entry_file": "jasna.exe",
+  "added": [
+    "python_source/jasna/models/ltx_vae/ops.py",
+    "python_source/jasna/models/ltx_vae/video_encoder.py"
+  ],
+  "modified": [
+    "jasna.exe",
+    "protection/_core.pyd",
+    "protection/_opaque_ltx.cp313-win_amd64.pyd",
+    "protection/host.manifest",
+    "protection/runtime.manifest",
+    "protection/startup-window.exe",
+    "protection/startup-window.exe.sig",
+    "python_source/jasna/models/ltx_vae/transformer.py",
+    "triton_prebuilt/cuda_utils.cp313-win_amd64.pyd"
+  ],
+  "deleted": [],
+  "payload_bytes": 580472752,
+  "old_files": 19453,
+  "new_files": 19455
+}
