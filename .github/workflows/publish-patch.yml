@@ -11,12 +11,10 @@ on:
         description: Installed baseline release tag
         type: string
         required: true
-        default: v0.11.1
       new_tag:
         description: Target release tag
         type: string
         required: true
-        default: v0.11.2
       asset_pattern:
         description: 'One archive family; placeholders {tag} or {version} (without leading v)'
         type: string
@@ -35,7 +33,7 @@ on:
         type: string
         default: '1000'
       mode:
-        description: Publish (skip an already complete release) or validate without publishing
+        description: Publish (sync reports for an existing release) or validate without publishing
         type: choice
         options:
           - publish
@@ -118,11 +116,11 @@ jobs:
       - name: Restore and verify a previous validated bundle
         if: steps.plan.outputs.action == 'recover'
         run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase recover
-      - name: Upload missing assets, verify and publish
-        if: steps.plan.outputs.action != 'done' && inputs.mode == 'publish'
+      - name: Verify assets, synchronize tagged reports and publish
+        if: inputs.mode == 'publish'
         run: python3 -u scripts/ci_release.py --work-dir "$RUNNER_TEMP/jasna-patch" --phase publish
       - name: Preserve outputs for recovery or inspection
-        if: always() && steps.plan.outputs.action != 'done'
+        if: always() && (steps.plan.outputs.action == 'build' || steps.plan.outputs.action == 'recover')
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, Node 24
         with:
           name: patch-build-output

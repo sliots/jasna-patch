@@ -17,6 +17,13 @@ from test_ci_release import config_env, source_records
 
 
 class GenericConfigTests(unittest.TestCase):
+    def test_version_inputs_are_required_without_historical_fallback(self):
+        for values in ({}, {'PATCH_OLD_TAG': 'baseline'},
+                       {'PATCH_OLD_TAG': '', 'PATCH_NEW_TAG': 'target'}):
+            with self.subTest(values=values), mock.patch.dict(os.environ, values, clear=True):
+                with self.assertRaisesRegex(ValueError, 'PATCH_OLD_TAG and PATCH_NEW_TAG are required'):
+                    PatchConfig.from_env()
+
     def test_config_round_trip_and_auto_tag(self):
         cfg = PatchConfig(source_repository='other/widget', old_tag='v1.2', new_tag='v2.5',
                           asset_pattern='widget-{version}.zip', entry_file='bin/widget.exe', volume_size_mb=500)
@@ -35,17 +42,17 @@ class GenericConfigTests(unittest.TestCase):
     def test_invalid_parameters_are_rejected(self):
         cases = [{'entry_file': '../escape.exe'}, {'new_tag': 'bad\ntag'}, {'source_repository': '../repo'},
                  {'asset_pattern': '{unknown}.zip'}, {'asset_pattern': '{tag.__class__}.zip'},
-                 {'volume_size_mb': 2001}, {'old_tag': 'v0.11.2'}]
+                 {'volume_size_mb': 2001}, {'old_tag': release_tests.TEST_CONFIG.new_tag}]
         for values in cases:
             with self.subTest(values=values), self.assertRaises(ValueError):
-                PatchConfig(**values)
+                PatchConfig(**{**release_tests.TEST_CONFIG.to_dict(), **values})
 
     def test_single_archives_and_different_volume_counts(self):
-        cfg = PatchConfig(asset_pattern='app-{version}.7z*')
+        cfg = PatchConfig(old_tag='v1', new_tag='v2', asset_pattern='app-{version}.7z*')
         for count in (1, 3, 5):
             records = source_records(cfg, counts=(count, count))
             self.assertEqual(len(ci.select_assets(records[0]['assets'], cfg.pattern(cfg.old_tag))), count)
-        zip_cfg = PatchConfig(asset_pattern='app-{tag}.zip')
+        zip_cfg = PatchConfig(old_tag='v1', new_tag='v2', asset_pattern='app-{tag}.zip')
         assets = source_records(zip_cfg, counts=(1, 1))[0]['assets']
         self.assertEqual(ci.select_assets(assets, zip_cfg.pattern(zip_cfg.old_tag)), assets)
 
@@ -65,17 +72,17 @@ class GenericConfigTests(unittest.TestCase):
 
     def test_missing_draft_is_created_after_source_checks(self):
         with tempfile.TemporaryDirectory() as directory, \
-             mock.patch.dict(os.environ, {'PATCH_REPOSITORY': 'acme/patch', **config_env(ci.DEFAULT_CONFIG)}), \
-             mock.patch.object(ci, 'gh_json', side_effect=[[], [{'id': 123, 'draft': True, 'tag_name': ci.TAG, 'assets': []}]]), \
+             mock.patch.dict(os.environ, {'PATCH_REPOSITORY': 'acme/patch', **config_env(release_tests.TEST_CONFIG)}), \
+             mock.patch.object(ci, 'gh_json', side_effect=[[], [{'id': 123, 'draft': True, 'tag_name': release_tests.TEST_CONFIG.tag, 'assets': []}]]), \
              mock.patch.object(ci, 'source_metadata', return_value=source_records()), \
              mock.patch.object(ci, 'run') as run:
             ctx = ci.preflight(pathlib.Path(directory) / 'work', 'publish', '')
         self.assertEqual(ctx['release_id'], 123)
-        self.assertEqual(run.call_args.args[0][:4], ['gh', 'release', 'create', ci.TAG])
+        self.assertEqual(run.call_args.args[0][:4], ['gh', 'release', 'create', release_tests.TEST_CONFIG.tag])
 
     def test_validate_mode_does_not_create_missing_release(self):
         with tempfile.TemporaryDirectory() as directory, \
-             mock.patch.dict(os.environ, {'PATCH_REPOSITORY': 'acme/patch', **config_env(ci.DEFAULT_CONFIG)}), \
+             mock.patch.dict(os.environ, {'PATCH_REPOSITORY': 'acme/patch', **config_env(release_tests.TEST_CONFIG)}), \
              mock.patch.object(ci, 'gh_json', return_value=[]), \
              mock.patch.object(ci, 'source_metadata', return_value=source_records()), \
              mock.patch.object(ci, 'run') as run:
@@ -90,15 +97,15 @@ class GenericBindingTests(unittest.TestCase):
 
     def test_recovery_parameters_must_match(self):
         report = json.loads((self.out / 'verification.json').read_text())
-        report['parameters'] = ci.DEFAULT_CONFIG.to_dict()
+        report['parameters'] = release_tests.TEST_CONFIG.to_dict()
         ci.write(self.out / 'verification.json', report)
         ci.checksum_files(self.out)
         with self.assertRaisesRegex(ValueError, 'parameters do not match'):
-            ci.local_bundle(self.out, PatchConfig(volume_size_mb=500))
+            ci.local_bundle(self.out, PatchConfig(**{**release_tests.TEST_CONFIG.to_dict(), 'volume_size_mb': 500}))
 
     def test_same_version_tags_cannot_reuse_other_upstream(self):
         with self.assertRaisesRegex(ValueError, 'upstream identity mismatch'):
-            ci.local_bundle(self.out, PatchConfig(source_repository='other/widget'))
+            ci.local_bundle(self.out, PatchConfig(**{**release_tests.TEST_CONFIG.to_dict(), 'source_repository': 'other/widget'}))
 
 
 class GenericFunctionalTests(unittest.TestCase):

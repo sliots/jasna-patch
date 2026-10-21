@@ -21,9 +21,6 @@ import urllib.parse
 from build_patch import scan, write
 from patch_config import PatchConfig, config_for, validate_relative
 
-DEFAULT_CONFIG = PatchConfig()
-TAG = DEFAULT_CONFIG.tag  # Backward-compatible defaults; runtime uses the saved config.
-VERSIONS = [(tag.removeprefix('v'), name) for tag, name in DEFAULT_CONFIG.versions]
 SEVEN_ZIP_URL = 'https://github.com/ip7z/7zip/releases/download/26.04/7z2604-linux-x64.tar.xz'
 SEVEN_ZIP_SHA256 = 'fc0327ba27e89bd086cf426dff17d77de582953cdbbc10a6576540a06853ffcd'
 LIMIT = 1_000_000_000
@@ -40,8 +37,14 @@ def run(args, **kwargs):
     return subprocess.run([str(x) for x in args], check=True, **kwargs)
 
 
-def gh_json(path):
-    return json.loads(subprocess.check_output(['gh', 'api', path]))
+def gh_json(path, *, method=None, payload=None):
+    args = ['gh', 'api', path]
+    if method:
+        args += ['--method', method]
+    if payload is not None:
+        args += ['--input', '-']
+    return json.loads(subprocess.check_output(
+        args, input=json.dumps(payload) if payload is not None else None, text=True))
 
 
 def digest(path):
@@ -95,7 +98,7 @@ def parse_checksums(data):
     return result
 
 
-def check_names(names, cfg=DEFAULT_CONFIG):
+def check_names(names, cfg):
     stem = cfg.archive_stem
     archives = sorted(n for n in names if n.startswith(stem + '.7z'))
     if not archives or names != REQUIRED_REPORTS | {'SHA256SUMS.txt'} | set(archives):
@@ -117,7 +120,7 @@ def check_report(report):
         raise ValueError('The bundle has no successful full validation report')
 
 
-def local_bundle(out, cfg=DEFAULT_CONFIG):
+def local_bundle(out, cfg):
     entries = list(out.iterdir())
     if any(not p.is_file() or p.is_symlink() for p in entries):
         raise ValueError('Artifact bundle may contain only regular files')
@@ -146,22 +149,23 @@ def remote_bytes(repo, asset):
     return data
 
 
-def published_is_complete(repo, release, cfg=DEFAULT_CONFIG):
+def published_is_complete(repo, release, cfg):
     """Read only small metadata files; no archive download or regeneration."""
     assets = {a['name']: a for a in release['assets']}
     check_names(set(assets), cfg)
     if len(assets) != len(release['assets']):
         raise ValueError('Duplicate remote asset name')
-    checksums = parse_checksums(remote_bytes(repo, assets['SHA256SUMS.txt']))
+    reports = {'SHA256SUMS.txt': remote_bytes(repo, assets['SHA256SUMS.txt'])}
+    checksums = parse_checksums(reports['SHA256SUMS.txt'])
     if set(checksums) != set(assets) - {'SHA256SUMS.txt'}:
         raise ValueError('Published checksum file set mismatch')
     for name, sha in checksums.items():
         if assets[name]['size'] <= 0 or assets[name].get('digest') != 'sha256:' + sha:
             raise ValueError(f'Published asset mismatch: {name}')
-    check_binding(
-        json.loads(remote_bytes(repo, assets['diff.json'])),
-        json.loads(remote_bytes(repo, assets['source-assets.json'])),
-        json.loads(remote_bytes(repo, assets['verification.json'])), cfg)
+    reports.update((name, remote_bytes(repo, assets[name])) for name in sorted(REQUIRED_REPORTS))
+    check_binding(json.loads(reports['diff.json']), json.loads(reports['source-assets.json']),
+                  json.loads(reports['verification.json']), cfg)
+    return reports
 
 
 def select_assets(assets, pattern):
@@ -187,7 +191,7 @@ def check_binding(diff, sources, report, cfg):
     check_report(report)
     if (diff.get('from'), diff.get('to')) != (cfg.old_tag, cfg.new_tag):
         raise ValueError('Artifact version pair mismatch')
-    if diff.get('entry_file', 'jasna.exe') != cfg.entry_file:
+    if diff.get('entry_file', cfg.entry_file) != cfg.entry_file:
         raise ValueError('Artifact entry file mismatch')
     if diff.get('source_repository', cfg.source_repository).casefold() != cfg.source_repository.casefold():
         raise ValueError('Artifact source repository mismatch')
@@ -274,7 +278,7 @@ def application_root(root, ctx, target):
     return content_root(root / target, config_for(ctx).entry_file)
 
 
-def source_metadata(cfg=DEFAULT_CONFIG):
+def source_metadata(cfg):
     result = []
     for tag, _ in cfg.versions:
         upstream = gh_json(f'repos/{cfg.source_repository}/releases/tags/{urllib.parse.quote(tag, safe="")}')
@@ -308,11 +312,11 @@ def preflight(root, mode, recovery_run_id):
         if target is None:
             raise RuntimeError('Could not confirm the newly created draft')
     ctx = {'repo': repo, 'tag': cfg.tag, 'release_id': target['id'] if target else None,
-           'mode': mode, 'config': cfg.to_dict()}
+           'mode': mode, 'config': cfg.to_dict(), 'source_commit': os.environ.get('GITHUB_SHA')}
     if mode == 'publish' and not target['draft']:
         published_is_complete(repo, target, cfg)
-        ctx['action'] = 'done'
-        print('Already published and all asset digests match; skipping rebuild:', target['html_url'], flush=True)
+        ctx['action'] = 'reports'
+        print('Published assets verified; synchronize tagged reports without rebuilding:', target['html_url'], flush=True)
     elif recovery_run_id:
         if not recovery_run_id.isdecimal():
             raise ValueError('Recovery run ID must be numeric')
@@ -404,8 +408,8 @@ def build(root, ctx):
     write(stage / 'source-assets.json', ctx['sources'])
 
 
-def pack(root, ctx=None):
-    cfg = config_for(ctx or {})
+def pack(root, ctx):
+    cfg = config_for(ctx)
     out = root / 'artifacts'
     out.mkdir()
     packed = out / f'{cfg.archive_stem}.7z'
@@ -472,7 +476,95 @@ def check_remote_assets(assets, expected, complete):
     return received
 
 
-def release_notes(out, cfg=DEFAULT_CONFIG):
+def tag_reference(repo, tag):
+    refs = gh_json(f'repos/{repo}/git/matching-refs/tags/{urllib.parse.quote(tag, safe="")}')
+    matches = [ref for ref in refs if ref['ref'] == f'refs/tags/{tag}']
+    if len(matches) > 1:
+        raise ValueError('Ambiguous release tag')
+    return matches[0] if matches else None
+
+
+def referenced_commit(repo, ref):
+    obj = ref['object']
+    for _ in range(8):
+        if obj['type'] == 'commit':
+            return obj['sha']
+        if obj['type'] != 'tag':
+            break
+        obj = gh_json(f'repos/{repo}/git/tags/{obj["sha"]}')['object']
+    raise ValueError('Release tag must resolve to a commit')
+
+
+def tree_entries(repo, sha):
+    tree = gh_json(f'repos/{repo}/git/trees/{sha}')
+    if tree.get('truncated'):
+        raise ValueError('Incomplete Git tree response')
+    return {entry['path']: entry for entry in tree['tree']}
+
+
+def report_blob_ids(reports):
+    if set(reports) != REQUIRED_REPORTS | {'SHA256SUMS.txt'}:
+        raise ValueError('A release snapshot requires the complete report set')
+    return {name: hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+            for name, data in reports.items()}
+
+
+def reports_match_tree(repo, root_tree, expected):
+    reports = tree_entries(repo, root_tree).get('reports')
+    if not reports or reports['type'] != 'tree':
+        return False
+    entries = tree_entries(repo, reports['sha'])
+    return set(entries) == set(expected) and all(
+        entries[name]['type'] == 'blob' and entries[name]['mode'] == '100644'
+        and entries[name]['sha'] == sha for name, sha in expected.items())
+
+
+def snapshot_reports(repo, cfg, reports, source_commit=None):
+    """Tag the source plus byte-identical verified reports, without changing main."""
+    expected = report_blob_ids(reports)
+    ref = tag_reference(repo, cfg.tag)
+    previous = referenced_commit(repo, ref) if ref else None
+    if previous:
+        commit = gh_json(f'repos/{repo}/git/commits/{previous}')
+        if reports_match_tree(repo, commit['tree']['sha'], expected):
+            print('Tagged reports already match the verified Release assets', flush=True)
+            return previous
+    source_commit = source_commit or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+    if not re.fullmatch(r'[a-f0-9]{40}', source_commit):
+        raise ValueError('Release snapshot requires an exact source commit SHA')
+    base = gh_json(f'repos/{repo}/git/commits/{source_commit}')
+    report_tree = gh_json(f'repos/{repo}/git/trees', method='POST', payload={
+        'tree': [{'path': name, 'mode': '100644', 'type': 'blob', 'content': data.decode('utf-8')}
+                 for name, data in sorted(reports.items())],
+    })
+    root_tree = gh_json(f'repos/{repo}/git/trees', method='POST', payload={
+        'base_tree': base['tree']['sha'],
+        'tree': [{'path': 'reports', 'mode': '040000', 'type': 'tree', 'sha': report_tree['sha']}],
+    })
+    # Include the old tagged commit as a parent so correcting a published tag is
+    # a fast-forward too. Never force-update a tag or touch a branch reference.
+    parents = list(dict.fromkeys([source_commit] + ([previous] if previous else [])))
+    snapshot = gh_json(f'repos/{repo}/git/commits', method='POST', payload={
+        'message': f'Record verified release reports for {cfg.tag}', 'tree': root_tree['sha'], 'parents': parents,
+    })
+    current = tag_reference(repo, cfg.tag)
+    if (current['object'] if current else None) != (ref['object'] if ref else None):
+        raise ValueError('Release tag changed while preparing its report snapshot')
+    if ref:
+        gh_json(f'repos/{repo}/git/refs/tags/{urllib.parse.quote(cfg.tag, safe="")}', method='PATCH',
+                payload={'sha': snapshot['sha'], 'force': False})
+    else:
+        gh_json(f'repos/{repo}/git/refs', method='POST',
+                payload={'ref': f'refs/tags/{cfg.tag}', 'sha': snapshot['sha']})
+    final = tag_reference(repo, cfg.tag)
+    if (not final or referenced_commit(repo, final) != snapshot['sha']
+            or not reports_match_tree(repo, root_tree['sha'], expected)):
+        raise RuntimeError('Tagged release reports do not match the verified assets')
+    print('Release reports snapshot:', snapshot['sha'], flush=True)
+    return snapshot['sha']
+
+
+def release_notes(out, cfg):
     diff = json.loads((out / 'diff.json').read_text())
     report = json.loads((out / 'verification.json').read_text())
     sizes = ', '.join(f'{p.name}: {p.stat().st_size:,} bytes' for p in sorted(out.glob('*.7z*')))
@@ -502,27 +594,42 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\\Apply-Patch.ps1 -InstallD
 def publish(root, ctx):
     out = root / 'artifacts'
     cfg = config_for(ctx)
-    expected = local_bundle(out, cfg)
+    reports_only = ctx['action'] == 'reports'
+    expected = None if reports_only else local_bundle(out, cfg)
     # The target identity comes only from preflight, never from upstream metadata.
     endpoint = f"repos/{ctx['repo']}/releases/{ctx['release_id']}"
     target = gh_json(endpoint)
     if target['tag_name'] != cfg.tag:
         raise ValueError('Target Release tag changed during the build')
-    received = check_remote_assets(target['assets'], expected, complete=not target['draft'])
+    if reports_only and target['draft']:
+        raise ValueError('Published Release became a draft during report synchronization')
     if not target['draft']:
-        print('Identical bundle already published; no changes needed', flush=True)
+        if expected is not None:
+            check_remote_assets(target['assets'], expected, complete=True)
+        reports = published_is_complete(ctx['repo'], target, cfg)
+        commit = snapshot_reports(ctx['repo'], cfg, reports, ctx.get('source_commit'))
+        if target.get('target_commitish') != commit:
+            run(['gh', 'release', 'edit', cfg.tag, '--repo', ctx['repo'], '--tag', cfg.tag, '--target', commit])
+        confirmed = gh_json(endpoint)
+        if confirmed['draft'] or confirmed['tag_name'] != cfg.tag or confirmed['target_commitish'] != commit:
+            raise RuntimeError('Release report snapshot binding failed')
+        published_is_complete(ctx['repo'], confirmed, cfg)
+        print('Published assets preserved; tagged reports synchronized:', confirmed['html_url'], flush=True)
         return
+    received = check_remote_assets(target['assets'], expected, complete=False)
     missing = [out / name for name in sorted(set(expected) - set(received))]
     if missing:
         run(['gh', 'release', 'upload', cfg.tag, *missing, '--repo', ctx['repo']])
     remote = gh_json(endpoint)
     check_remote_assets(remote['assets'], expected, complete=True)
+    reports = published_is_complete(ctx['repo'], remote, cfg)
+    commit = snapshot_reports(ctx['repo'], cfg, reports, ctx.get('source_commit'))
     notes = root / 'release-notes.md'
     notes.write_text(release_notes(out, cfg), encoding='utf-8')
     run(['gh', 'release', 'edit', cfg.tag, '--repo', ctx['repo'], '--tag', cfg.tag,
-         '--notes-file', notes, '--draft=false'])
+         '--target', commit, '--notes-file', notes, '--draft=false'])
     published = gh_json(endpoint)
-    if published['draft'] or published['tag_name'] != cfg.tag:
+    if published['draft'] or published['tag_name'] != cfg.tag or published['target_commitish'] != commit:
         raise RuntimeError('Release publication or tag verification failed')
     check_remote_assets(published['assets'], expected, complete=True)
     print('Published:', published['html_url'], flush=True)
@@ -543,8 +650,6 @@ def main():
         if (ctx['repo'] != os.environ['PATCH_REPOSITORY'] or ctx['tag'] != config_for(ctx).tag
                 or config_for(ctx).to_dict() != PatchConfig.from_env().to_dict()):
             raise ValueError('Work directory context does not match this repository/tag')
-        if ctx['action'] == 'done':
-            return
         if args.phase == 'tools':
             install_tools(root)
         elif args.phase.startswith('extract-'):

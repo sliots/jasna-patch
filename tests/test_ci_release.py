@@ -11,9 +11,13 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
 import ci_release as ci
+from patch_config import PatchConfig
+
+TEST_CONFIG = PatchConfig(old_tag='baseline', new_tag='target', source_repository='acme/widget',
+                          asset_pattern='widget-{tag}.7z*', entry_file='widget.exe')
 
 
-def source_records(cfg=ci.DEFAULT_CONFIG, counts=(4, 4)):
+def source_records(cfg=TEST_CONFIG, counts=(4, 4)):
     result = []
     for (tag, _), count in zip(cfg.versions, counts):
         pattern = cfg.pattern(tag)
@@ -36,25 +40,26 @@ class ReleaseTests(unittest.TestCase):
         self.out = self.base / 'artifacts'
         self.out.mkdir()
         self.repo = 'acme/patch'
-        self.ctx = {'repo': self.repo, 'tag': ci.TAG, 'release_id': 100, 'mode': 'publish'}
-        self.env = mock.patch.dict(os.environ, {'PATCH_REPOSITORY': self.repo, 'GITHUB_OUTPUT': '', **config_env(ci.DEFAULT_CONFIG)})
+        self.ctx = {'repo': self.repo, 'tag': TEST_CONFIG.tag, 'release_id': 100, 'mode': 'publish',
+                    'action': 'build', 'config': TEST_CONFIG.to_dict(), 'source_commit': 'a' * 40}
+        self.env = mock.patch.dict(os.environ, {'PATCH_REPOSITORY': self.repo, 'GITHUB_OUTPUT': '', **config_env(TEST_CONFIG)})
         self.env.start()
         self.addCleanup(self.env.stop)
         ci.write(self.out / 'diff.json', {
-            'from': 'v0.11.1', 'to': 'v0.11.2', 'added': ['a'], 'modified': ['b'], 'deleted': ['c'],
+            'from': TEST_CONFIG.old_tag, 'to': TEST_CONFIG.new_tag, 'added': ['a'], 'modified': ['b'], 'deleted': ['c'],
         })
         ci.write(self.out / 'source-assets.json', source_records())
         ci.write(self.out / 'verification.json', {
             **{k: True for k in ci.VERIFIED_FLAGS}, 'actual_powershell_apply_exit_code': 0,
             'source_archive_parts_sha256_verified': 8, 'target_files': 3,
         })
-        (self.out / f'{ci.TAG}.7z').write_bytes(b'transport fixture, not used as an actual archive')
+        (self.out / f'{TEST_CONFIG.tag}.7z').write_bytes(b'transport fixture, not used as an actual archive')
         ci.checksum_files(self.out)
 
     def release(self, draft=True, names=None):
         names = names if names is not None else [p.name for p in self.out.iterdir()]
         return {
-            'id': 100, 'draft': draft, 'tag_name': ci.TAG, 'html_url': 'https://example.invalid/release',
+            'id': 100, 'draft': draft, 'target_commitish': 'b' * 40, 'tag_name': TEST_CONFIG.tag, 'html_url': 'https://example.invalid/release',
             'assets': [{'id': i, 'name': name, 'size': (self.out / name).stat().st_size,
                         'digest': 'sha256:' + ci.digest(self.out / name)} for i, name in enumerate(names, 1)],
         }
@@ -64,7 +69,7 @@ class ReleaseTests(unittest.TestCase):
         with mock.patch.object(ci, 'gh_json', return_value=[target]) as api, \
              mock.patch.object(ci, 'remote_bytes', side_effect=lambda repo, a: (self.out / a['name']).read_bytes()) as fetch:
             ctx = ci.preflight(self.base / 'work', 'publish', '')
-        self.assertEqual(ctx['action'], 'done')
+        self.assertEqual(ctx['action'], 'reports')
         api.assert_called_once_with('repos/acme/patch/releases?per_page=100&page=1')
         self.assertEqual({call.args[1]['name'] for call in fetch.call_args_list},
                          {'SHA256SUMS.txt', 'verification.json', 'diff.json', 'source-assets.json'})
@@ -72,16 +77,18 @@ class ReleaseTests(unittest.TestCase):
     def test_upstream_ids_cannot_replace_target_id(self):
         target = self.release(names=[])
         upstream = []
-        for i, (version, _) in enumerate(ci.VERSIONS, 1000):
-            upstream.append({'id': i, 'tag_name': f'v{version}', 'html_url': 'https://example.invalid',
-                             'assets': [{'name': f'jasna-windows-{version}.7z.{n:03d}', 'size': 1,
+        for i, (version, _) in enumerate(TEST_CONFIG.versions, 1000):
+            upstream.append({'id': i, 'tag_name': version, 'html_url': 'https://example.invalid',
+                             'assets': [{'name': f'widget-{version}.7z.{n:03d}', 'size': 1,
                                          'digest': 'sha256:' + 'a' * 64,
                                          'browser_download_url': 'https://example.invalid'} for n in range(1, 5)]})
         with mock.patch.object(ci, 'gh_json', side_effect=[[target], *upstream]):
             ctx = ci.preflight(self.base / 'work', 'publish', '')
         self.assertEqual(ctx['release_id'], 100)
-        self.assertEqual([r['tag'] for r in ctx['sources']], ['v0.11.1', 'v0.11.2'])
+        self.assertEqual([r['tag'] for r in ctx['sources']], [TEST_CONFIG.old_tag, TEST_CONFIG.new_tag])
         with mock.patch.object(ci, 'gh_json', return_value=self.release(draft=False)) as api, \
+             mock.patch.object(ci, 'remote_bytes', side_effect=lambda repo, a: (self.out / a['name']).read_bytes()), \
+             mock.patch.object(ci, 'snapshot_reports', return_value='b' * 40), \
              mock.patch.object(ci, 'run') as command:
             ci.publish(self.base, ctx)
         self.assertEqual(api.call_args.args[0], 'repos/acme/patch/releases/100')
@@ -92,15 +99,29 @@ class ReleaseTests(unittest.TestCase):
         all_assets = self.release()
         published = self.release(draft=False)
         with mock.patch.object(ci, 'gh_json', side_effect=[first, all_assets, published]), \
+             mock.patch.object(ci, 'published_is_complete', return_value={}), \
+             mock.patch.object(ci, 'snapshot_reports', return_value='b' * 40) as snapshot, \
              mock.patch.object(ci, 'run') as command:
             ci.publish(self.base, self.ctx)
         upload = command.call_args_list[0].args[0]
-        self.assertEqual(upload[:4], ['gh', 'release', 'upload', ci.TAG])
+        self.assertEqual(upload[:4], ['gh', 'release', 'upload', TEST_CONFIG.tag])
         paths = [p.name for p in upload if isinstance(p, pathlib.Path)]
         self.assertNotIn('diff.json', paths)
         self.assertEqual(len(paths), 4)
         edit = command.call_args_list[1].args[0]
-        self.assertEqual(edit[edit.index('--tag') + 1], ci.TAG)
+        self.assertEqual(edit[edit.index('--tag') + 1], TEST_CONFIG.tag)
+        self.assertEqual(edit[edit.index('--target') + 1], 'b' * 40)
+        snapshot.assert_called_once()
+
+    def test_report_snapshot_failure_keeps_complete_assets_in_draft(self):
+        target = self.release()
+        with mock.patch.object(ci, 'gh_json', return_value=target), \
+             mock.patch.object(ci, 'published_is_complete', return_value={}), \
+             mock.patch.object(ci, 'snapshot_reports', side_effect=ValueError('tag changed')), \
+             mock.patch.object(ci, 'run') as command:
+            with self.assertRaisesRegex(ValueError, 'tag changed'):
+                ci.publish(self.base, self.ctx)
+        command.assert_not_called()
 
     def test_mismatched_remote_asset_is_not_overwritten(self):
         target = self.release(names=['diff.json'])
@@ -111,7 +132,7 @@ class ReleaseTests(unittest.TestCase):
         command.assert_not_called()
 
     def test_corrupt_bundle_is_rejected_before_network_mutation(self):
-        (self.out / f'{ci.TAG}.7z').write_bytes(b'corrupt')
+        (self.out / f'{TEST_CONFIG.tag}.7z').write_bytes(b'corrupt')
         with mock.patch.object(ci, 'gh_json') as api, mock.patch.object(ci, 'run') as command:
             with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
                 ci.publish(self.base, self.ctx)
@@ -132,7 +153,7 @@ class ReleaseTests(unittest.TestCase):
         ci.write(self.out / 'verification.json', report)
         ci.checksum_files(self.out)
         with self.assertRaisesRegex(ValueError, 'successful full validation'):
-            ci.local_bundle(self.out)
+            ci.local_bundle(self.out, TEST_CONFIG)
 
     def test_recovery_does_not_rebuild_sources(self):
         target = self.release(names=['diff.json'])
@@ -197,24 +218,24 @@ class FunctionalPatchTests(unittest.TestCase):
             for version in ('old', 'new'):
                 tree = root / version
                 tree.mkdir()
-                (tree / 'jasna.exe').write_bytes(version.encode())
+                (tree / 'widget.exe').write_bytes(version.encode())
                 (tree / 'unchanged.bin').write_bytes(b'\x00unchanged\xff')
             (root / 'old' / 'deleted.txt').write_text('obsolete')
             (root / 'new' / 'added.txt').write_text('added')
-            ctx = {'repo': 'fixture/patch', 'sources': source_records()}
+            ctx = {'repo': 'fixture/patch', 'sources': source_records(), 'config': TEST_CONFIG.to_dict()}
             ci.build(root, ctx)
             (root / 'tools').mkdir()
             (root / 'tools' / '7zz').symlink_to(shutil.which('7zz') or shutil.which('7z'))
             with mock.patch.dict(os.environ, {'PATCH_COMPRESSION_LEVEL': '3'}):
-                ci.pack(root)
+                ci.pack(root, ctx)
                 ci.validate(root, ctx)
             self.assertEqual(ci.scan(root / 'old'), ci.scan(root / 'new'))
             self.assertEqual(json.loads((root / 'artifacts' / 'diff.json').read_text())['deleted'], ['deleted.txt'])
-            ci.local_bundle(root / 'artifacts')
+            ci.local_bundle(root / 'artifacts', TEST_CONFIG)
             # Restore a deliberately modified baseline: the actual script must fail before writes.
             for p in (root / 'old').iterdir():
                 p.unlink()
-            (root / 'old' / 'jasna.exe').write_bytes(b'corrupt baseline')
+            (root / 'old' / 'widget.exe').write_bytes(b'corrupt baseline')
             (root / 'old' / 'unchanged.bin').write_bytes(b'\x00unchanged\xff')
             (root / 'old' / 'deleted.txt').write_text('obsolete')
             before = ci.scan(root / 'old')

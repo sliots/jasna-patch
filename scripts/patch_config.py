@@ -23,9 +23,9 @@ def validate_relative(value):
 
 @dataclass(frozen=True)
 class PatchConfig:
+    old_tag: str
+    new_tag: str
     source_repository: str = 'Kruk2/jasna'
-    old_tag: str = 'v0.11.1'
-    new_tag: str = 'v0.11.2'
     asset_pattern: str = 'jasna-windows-{version}.7z*'
     release_tag: str = ''
     entry_file: str = 'jasna.exe'
@@ -91,8 +91,10 @@ class PatchConfig:
             raw = os.environ.get('PATCH_' + name.upper())
             if raw is not None:
                 values[name] = int(raw) if name == 'volume_size_mb' else raw
+        if not values.get('old_tag') or not values.get('new_tag'):
+            raise ValueError('PATCH_OLD_TAG and PATCH_NEW_TAG are required')
         return cls(**values)
 
 
 def config_for(ctx):
-    return PatchConfig(**ctx['config']) if 'config' in ctx else PatchConfig()
+    return PatchConfig(**ctx['config'])
