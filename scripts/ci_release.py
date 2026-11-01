@@ -305,11 +305,13 @@ def preflight(root, mode, recovery_run_id):
     sources = None
     if target is None and mode == 'publish':
         sources = source_metadata(cfg)
-        run(['gh', 'release', 'create', cfg.tag, '--repo', repo, '--draft',
-             '--target', os.environ.get('GITHUB_SHA', 'main'), '--title', cfg.tag,
-             '--notes', 'Patch preparation pending validation.'])
-        target = find_release(repo, cfg.tag)
-        if target is None:
+        # The release list can lag behind creation. Keep the immutable ID from
+        # the create response instead of immediately searching that list again.
+        target = gh_json(f'repos/{repo}/releases', method='POST', payload={
+            'tag_name': cfg.tag, 'target_commitish': os.environ.get('GITHUB_SHA', 'main'),
+            'name': cfg.tag, 'draft': True, 'body': 'Patch preparation pending validation.',
+        })
+        if target.get('tag_name') != cfg.tag or target.get('draft') is not True or not target.get('id'):
             raise RuntimeError('Could not confirm the newly created draft')
     ctx = {'repo': repo, 'tag': cfg.tag, 'release_id': target['id'] if target else None,
            'mode': mode, 'config': cfg.to_dict(), 'source_commit': os.environ.get('GITHUB_SHA')}

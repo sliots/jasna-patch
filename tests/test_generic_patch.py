@@ -73,12 +73,17 @@ class GenericConfigTests(unittest.TestCase):
     def test_missing_draft_is_created_after_source_checks(self):
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.dict(os.environ, {'PATCH_REPOSITORY': 'acme/patch', **config_env(release_tests.TEST_CONFIG)}), \
-             mock.patch.object(ci, 'gh_json', side_effect=[[], [{'id': 123, 'draft': True, 'tag_name': release_tests.TEST_CONFIG.tag, 'assets': []}]]), \
+             mock.patch.object(ci, 'gh_json', side_effect=[[], {'id': 123, 'draft': True, 'tag_name': release_tests.TEST_CONFIG.tag, 'assets': []}]) as api, \
              mock.patch.object(ci, 'source_metadata', return_value=source_records()), \
              mock.patch.object(ci, 'run') as run:
             ctx = ci.preflight(pathlib.Path(directory) / 'work', 'publish', '')
         self.assertEqual(ctx['release_id'], 123)
-        self.assertEqual(run.call_args.args[0][:4], ['gh', 'release', 'create', release_tests.TEST_CONFIG.tag])
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual(api.call_args.args, ('repos/acme/patch/releases',))
+        self.assertEqual(api.call_args.kwargs['method'], 'POST')
+        self.assertEqual(api.call_args.kwargs['payload']['tag_name'], release_tests.TEST_CONFIG.tag)
+        self.assertIs(api.call_args.kwargs['payload']['draft'], True)
+        run.assert_not_called()
 
     def test_validate_mode_does_not_create_missing_release(self):
         with tempfile.TemporaryDirectory() as directory, \
