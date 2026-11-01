@@ -1,0 +1,29 @@
+{
+  "validated_at_utc": "2026-11-01T12:29:48.409327+00:00",
+  "source_archive_parts_sha256_verified": 8,
+  "source_archives_extraction_crc_verified": true,
+  "patch_archive_extraction_crc_verified": true,
+  "actual_powershell_apply_exit_code": 0,
+  "updated_file_set_and_sha256_exactly_match_target": true,
+  "target_files": 18038,
+  "target_bytes": 12809078797,
+  "validation_platform": "Linux x64; application/GPU not launched",
+  "actions_run_url": "https://github.com/sliots/jasna-patch/actions/runs/41305615151",
+  "compression_level": 3,
+  "parameters": {
+    "old_tag": "v0.11.3",
+    "new_tag": "v0.12.1",
+    "source_repository": "Kruk2/jasna",
+    "asset_pattern": "jasna-windows-[0-9n]*.7z*",
+    "release_tag": "v0.12.1-v0.11.3.patch",
+    "entry_file": "jasna.exe",
+    "volume_size_mb": 1000
+  },
+  "archives": [
+    {
+      "name": "v0.12.1-v0.11.3.patch.7z",
+      "size": 917033026,
+      "sha256": "8596c276005502774784981e655b37829fa62ae2d2c826a7c93935787303b826"
+    }
+  ]
+}
