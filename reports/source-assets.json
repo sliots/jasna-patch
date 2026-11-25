@@ -1,0 +1,40 @@
+[
+  {
+    "repository": "Kruk2/jasna",
+    "tag": "v0.12.3",
+    "url": "https://github.com/Kruk2/jasna/releases/tag/v0.12.3",
+    "assets": [
+      {
+        "name": "jasna-windows-0.12.3.7z.001",
+        "size": 2097152000,
+        "digest": "sha256:4f99806f7f58f367a49a758425c28d8bab47c727e5797de134e9153111800764",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.12.3/jasna-windows-0.12.3.7z.001"
+      },
+      {
+        "name": "jasna-windows-0.12.3.7z.002",
+        "size": 1283426354,
+        "digest": "sha256:1a8fd0d93eed2a8a095a468a8301b5bbc0d65fd43ce802385ec57c284fbb87ed",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.12.3/jasna-windows-0.12.3.7z.002"
+      }
+    ]
+  },
+  {
+    "repository": "Kruk2/jasna",
+    "tag": "v0.12.4",
+    "url": "https://github.com/Kruk2/jasna/releases/tag/v0.12.4",
+    "assets": [
+      {
+        "name": "jasna-windows-nvidia-0.12.4.7z.001",
+        "size": 2097152000,
+        "digest": "sha256:b60fc1c4d2f010a49c518592f8b8cf79f2df2b1a3d4ccf6461420917a510b438",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.12.4/jasna-windows-nvidia-0.12.4.7z.001"
+      },
+      {
+        "name": "jasna-windows-nvidia-0.12.4.7z.002",
+        "size": 1288523947,
+        "digest": "sha256:8600f4bd1e4483f7cdaff168bcf381107f5291d70c0255d7693b0b8cfd149c0d",
+        "browser_download_url": "https://github.com/Kruk2/jasna/releases/download/v0.12.4/jasna-windows-nvidia-0.12.4.7z.002"
+      }
+    ]
+  }
+]
